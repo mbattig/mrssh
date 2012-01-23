@@ -23,13 +23,16 @@
 import socket, simplejson
 
 def main():
-	# TCP client example
+# TCP client example
+    tx={}
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.connect(("localhost", 40000))
+    tx["cmd"]="port_request"
+    client_socket.send(simplejson.dumps(tx))
 
-	client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-	client_socket.connect(("localhost", 40000))
-	data = simplejson.loads(client_socket.recv(512))
-	print data["port"]
-	return 0
+    rx = simplejson.loads(client_socket.recv(512))
+    print rx["port"]
+    return 0
 
 if __name__ == '__main__':
-	main()
+    main()
