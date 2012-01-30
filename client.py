@@ -20,19 +20,35 @@
 #       Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #       MA 02110-1301, USA.
 
-import socket, simplejson
+import socket, simplejson, subprocess, sys
 
-def main():
-# TCP client example
-    tx={}
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect(("localhost", 40000))
-    tx["cmd"]="port_request"
-    client_socket.send(simplejson.dumps(tx))
-
-    rx = simplejson.loads(client_socket.recv(512))
-    print rx["port"]
+def main(args):
+    
+    if args.__len__() < 2 :
+	print "not enough arguments"
+    else:
+	#TCP client example
+	tx={}
+	p = subprocess.Popen(["uname", "-snrmpio"],stdout=subprocess.PIPE)
+	tx["id"] = p.communicate()[0].rstrip()
+	
+	client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	client_socket.connect(("192.168.220.211", 40000))
+	tx["cmd"]=args[1]
+	client_socket.send(simplejson.dumps(tx))
+	while 1:
+	    rx = client_socket.recv(512)
+	    try:		
+		data = simplejson.loads(rx)
+		print data["status"]
+		print data["value"]
+		break
+	    except ValueError:
+		print rx
+		break
+	tx["cmd"]="exit"
+	client_socket.send(simplejson.dumps(tx))
     return 0
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv)

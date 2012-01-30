@@ -24,6 +24,7 @@ import simplejson, subprocess, urllib, socket
 
 BASE_DIR = "/home/matt/dev/mrssh"
 CONFIG_FILE_NAME = "config"
+PORTS_FILE_NAME = "ports"
 SCP_CMD = "scp "
 
 
@@ -32,6 +33,7 @@ def main():
     HOME_IP = urllib.urlopen("http://automation.whatismyip.com/n09230945.asp").read()
     # read in the config parameters
     config_parameters = simplejson.loads(file(CONFIG_FILE_NAME).read())
+    ports = simplejson.loads(file(PORTS_FILE_NAME).read())
 
     #print config_parameters["server_ip"]
     #print config_parameters["port_base"]
@@ -40,49 +42,80 @@ def main():
     # TCP server example\
 
     # read in port allocation
-    if config_parameters["ports"].__len__() == 0:
+    if ports.__len__() == 0:
         print "nobody connected right now..."
     else:
         #print range(config_parameters["ports"].__len__())
-        for entry in config_parameters["ports"]:
-            print entry + ":"+ config_parameters["ports"][entry]
+        for entry in ports:
+            print entry + ":"+ ports[entry]
 
     # start up the port allocation server
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(("", config_parameters["port_base"]))
+    #have to change IP address...
+    server_socket.bind((config_parameters["home_ip"], config_parameters["port_base"]))
     server_socket.listen(5)
 
     print "Server Waiting for client on port "+config_parameters["port_base"].__str__()
 
     while 1:
         client_socket, address = server_socket.accept()
-        print "Request from ", address
+        print "Connection from ", address
         while 1:
-            rx = simplejson.loads(client_socket.recv(512))
-            if rx["cmd"] == "port_request":
-                print "allocating port..."
-                port = config_parameters["port_base"]
-                while 1:
-                    port=port+1
-                    if config_parameters["ports"].has_key(port.__str__()):
-                        #print port.__str__() + " already taken"
-                        pass
-                    else:
-                        #print port.__str__() + " free!"
-                        break
+            rx = client_socket.recv(512).rstrip()
+            try:
                 data={}
-                data["port"]=port
-                # update config file with current port allocation...
-
-                client_socket.send(simplejson.dumps(data))
-            elif rx["cmd"] == "exit" :
+                json = simplejson.loads(rx)
+                if json["cmd"] == "port_request" :
+                    print "allocating port to "+json["id"]
+                    #print ports.has_key(json["id"])
+                    port = config_parameters["port_base"]
+                    while 1:
+                        port=port+1
+                        if ports.has_key(port.__str__()):
+                            #print port.__str__() + " already taken"
+                            if ports[port.__str__()] == json["id"]:
+                                print "already allocated port "+ port.__str__()
+                                break
+                            else:
+                                pass
+                        else:
+                            #print port.__str__() + " free!"
+                            break
+                    data["status"]="ok"
+                    data["value"]=port
+                    # update config file with current port allocation...
+                    client_socket.send(simplejson.dumps(data))
+                    ports[port]=json["id"]
+                    f = file(PORTS_FILE_NAME,"w")
+                    f.write(simplejson.dumps(ports))
+                    f.close()
+                elif json["cmd"] == "disconnect" :	                
+                    # commented for testing
+                    print "recieved disconnect.  removing "+json["id"]+" from ports list."
+                    ports.__delitem__(json["id"])
+                    f = file(PORTS_FILE_NAME,"w")
+                    f.write(simplejson.dumps(ports))
+                    f.close()
+                    data["status"]="ok"
+                    client_socket.send(simplejson.dumps(data))
+                    break
+                elif json["cmd"] == "show_ports" :
+                    print "show_ports to "+json["id"]
+                    client_socket.send(simplejson.dumps(ports))
+                elif json["cmd"] == "exit" :	                
+                    # commented for testing
+                    data["status"]="ok"
+                    client_socket.send(simplejson.dumps(data))
+                    print "recieved exit, disconnecting "+json["id"]
+                    break
                 
-                # commented for testing
-                client_socket.close()
-                print "recieved exit command disconnecting..."
-            else:
-                print "recieved "+rx["cmd"]
-
+                else:
+                    print json["id"]+" sent: "+json["cmd"]
+            except ValueError:
+                data["error"]="Couldn't decode JSON string."
+                print "ERROR: "+data["error"]
+                client_socket.send(simplejson.dumps(data)+"\n")
+        client_socket.close()
     return 0
 
 if __name__ == '__main__':
